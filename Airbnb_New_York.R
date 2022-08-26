@@ -1,0 +1,209 @@
+# Exploratory Data Analysis
+
+Dataset: https://www.kaggle.com/datasets/arianazmoudeh/airbnbopendata
+
+# Load necessary packages
+library("tidyverse")
+
+# Load the data
+airbnb <- read.csv("Airbnb_Open_Data.csv")
+
+# Check the structure of data frame
+str(airbnb)
+
+# Get a summary of data frame
+summary(airbnb)
+
+# View the data frame
+View(airbnb)
+
+# Data Preparation
+# Remove unwanted columns
+# Rename the columns
+# Remove 'NA' from columns :lat, long, instant_booking, construction_year
+# Remove entries where host verification status is empty
+# Remove entries where borough is empty
+# Get the mean value of rating
+# Replace NA in rating with mean value
+# Get rid of '$' and "," from price and cast as integer
+# Replace 'brookln' in borough by 'Brooklyn'
+# Add a column for price range
+# Remove 'NA' from price and price_range
+
+# Remove unwanted columns
+airbnb_ny <- airbnb %>% 
+  select(id, host.id, host_identity_verified, neighbourhood.group, neighbourhood, lat, long, instant_bookable, cancellation_policy, room.type, Construction.year, price, review.rate.number)
+
+# Rename the columns
+airbnb_ny <- rename(airbnb_ny, listing_id = id, 
+                    host_id = host.id,
+                    host_verification_status = host_identity_verified,
+                    borough = neighbourhood.group,
+                    instant_booking = instant_bookable,
+                    room_type = room.type,
+                    construction_year = Construction.year, 
+                    rating = review.rate.number)
+
+# Remove entries with 'NA' from columns :lat, long, instant_booking, construction_year
+airbnb_ny <- airbnb_ny %>% 
+  filter(!is.na(lat) & !is.na(long) & !is.na(instant_booking) & !is.na(construction_year))
+
+# Remove entries where host verification status is empty
+airbnb_ny <- airbnb_ny %>% 
+  filter(!host_verification_status == "")
+
+# Remove entries where borough is empty
+airbnb_ny <- airbnb_ny %>% 
+  filter(!borough == "")
+
+# Get the mean value of rating
+airbnb_ny %>% 
+  filter(!is.na(rating)) %>% 
+  summarize(mean_rating = mean(rating))
+
+# Replace NA in rating with mean value
+airbnb_ny$rating[is.na(airbnb_ny$rating)] <- 3
+
+# Get rid of $ and "," from price and cast as integer
+airbnb_ny$price <- substr(airbnb_ny$price, 2, 6)
+airbnb_ny$price <- gsub(",", "", airbnb_ny$price)
+airbnb_ny$price <- as.integer(airbnb_ny$price)
+
+# Replace 'brookln' in borough by 'Brooklyn'
+airbnb_ny$borough <- gsub("brookln", "Brooklyn", airbnb_ny$borough)
+
+# Add a column for price range
+airbnb_ny$price_range <- cut(as.integer(airbnb_ny$price), breaks= c(seq(0,1200, by= 100)))
+
+# Remove 'NA' from price and price_range
+airbnb_ny <- airbnb_ny %>% 
+  filter(!is.na(price) & !is.na(price_range))
+
+# Data Visualization
+
+# Scatter plot: Rating vs price
+ggplot(data = airbnb_ny, aes(x = rating, y = price))+
+  geom_point()+
+  facet_grid(~borough~room_type)+
+  labs(x = "Rating",
+       y = "Price",
+       title = "Scatterplot: Rating vs price",
+       subtitle = "Airbnb: Listings in New York")
+
+# Scatter plot: construction year vs price
+ggplot(data = airbnb_ny, aes(x = construction_year, y = price ))+
+  geom_point()+
+  geom_smooth()+
+  facet_grid(~borough~room_type)+
+  labs(x = "Construction Year",
+       y = "Price",
+       title = "Scatterplot: Construction year vs price",
+       subtitle = "Airbnb: Listings in New York")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# Number of listings per Borough
+airbnb_ny %>% 
+  group_by(borough) %>% 
+  mutate(listings = n()) %>% 
+  ggplot(aes(x= reorder(borough, -listings), label= borough, fill= borough ))+
+  geom_bar(alpha= 0.7)+
+  theme_bw()+
+  geom_text(stat = 'count', position = position_stack(vjust = 0.9), aes(label=..count..), angle = 90)+
+  labs(x = "Borough",
+       y = "Number of listings",
+       title = "Number of listings per Borough",
+       subtitle = "Airbnb: Listings in New York")
+
+# Number of listings according to room type
+airbnb_ny %>% 
+  group_by(room_type) %>% 
+  mutate(listings = n()) %>% 
+  ggplot(aes(x= reorder(room_type, -listings), label = room_type, fill = room_type))+
+  geom_bar(alpha= 0.7)+
+  theme_bw()+
+  geom_text(stat = 'count', position = position_stack(vjust = 0.9), aes(label=..count..), angle = 90)+
+  labs(x = "Room type",
+       y = "Number of listings",
+       title = "Number of listings according to room type",
+       subtitle = "Airbnb: Listings in New York")
+
+# Neighborhoods with highest average price for private room
+# Unique neighborhoods
+neighborhoods <- airbnb_ny %>% 
+  select(neighbourhood, borough) %>% 
+  group_by(neighbourhood, borough) %>% 
+  summarise(count = n())
+
+airbnb_ny %>% 
+  group_by(neighbourhood) %>% 
+  filter(room_type == "Private room") %>% 
+  summarise(avg = as.integer(mean(price))) %>% 
+  arrange(-avg) %>% 
+  head(10) %>% 
+  merge(y = neighborhoods, by = "neighbourhood", all=FALSE) %>% 
+  ggplot(aes(x = reorder(neighbourhood, -avg), y =avg, label = avg, fill = borough))+
+  theme_bw()+
+  geom_bar(stat= 'identity', alpha=0.7)+
+  geom_text(vjust= 1.5)+
+  labs(x = "Neighbourhood",
+       y = "Average price",
+       title = "Neighborhoods with highest average price for private room",
+       subtitle = "Airbnb: Listings in New York")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# Neighborhoods with highest average price for entire home/apt
+airbnb_ny %>% 
+  group_by(neighbourhood) %>% 
+  filter(room_type == "Entire home/apt") %>% 
+  summarise(avg = as.integer(mean(price))) %>% 
+  arrange(-avg) %>% 
+  head(10) %>% 
+  merge(y = neighborhoods, by = "neighbourhood", all=FALSE) %>%  
+  ggplot(aes(x = reorder(neighbourhood, -avg), y =avg, label = avg, fill = borough))+
+  theme_bw()+
+  geom_bar(stat= 'identity', alpha=0.7)+
+  geom_text(vjust= 1.5)+
+  labs(x = "Neighbourhood",
+       y = "Average price",
+       title = "Neighborhoods with highest average price for Entire home/apt",
+       subtitle = "Airbnb: Listings in New York")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# Number of listings over price range for room type
+ggplot(data = airbnb_ny, aes(x= price_range, label= price_range, fill= price_range))+
+  geom_bar(alpha= 0.7)+
+  theme_bw()+
+  geom_text(stat = 'count', position = position_stack(vjust = 0.8), aes(label=..count..), angle = 90)+
+  labs(x = "Price range",
+       y = "Number of listings",
+       title = "Number of listings over price range for room type",
+       subtitle = "Airbnb: Listings in New York")+
+  facet_wrap(~room_type)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# Number of listings over a price range in borough
+ggplot(data = airbnb_ny, aes(x= price_range, label= price_range, fill= price_range))+
+  geom_bar(alpha= 0.7)+
+  theme_bw()+
+  geom_text(stat = 'count', position = position_stack(vjust = 0.7), aes(label=..count..), angle = 90)+
+  labs(x = "Price range",
+       y = "Number of listings",
+       title = "Number of listings over a price range in borough",
+       subtitle = "Airbnb: Listings in New York")+
+  facet_wrap(~borough)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# Average price by a room type in different boroughs
+airbnb_ny %>% 
+  group_by(room_type, borough) %>% 
+  summarise(average_price= as.integer(mean(price))) %>% 
+  ggplot(aes(x=borough, y= average_price, label= average_price, fill= borough, shape= room_type))+
+  theme_bw()+
+  geom_bar(stat= 'identity', alpha= 0.7, show.legend = FALSE)+
+  facet_wrap(~room_type)+
+  geom_text(vjust= 1.5)+
+  labs(x = "Borough",
+       y = "Average price",
+       title = "Average price by a room type in different boroughs",
+       subtitle = "Airbnb: Listings in New York")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
